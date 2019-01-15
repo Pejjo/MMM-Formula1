@@ -10,7 +10,7 @@ Module.register("MMM-Formula1",{
     // Default module config.
     defaults: {
         season: 'current',
-        type: 'DRIVER',
+        type: 'TASK',
         maxRows: false,
         calendar: false,
         fade: true,
@@ -19,11 +19,13 @@ Module.register("MMM-Formula1",{
         animationSpeed: 2.5 * 1000,           // 2.5 seconds
         grayscale: true,
         showFooter: true,
+	timeFormat: "YYYY-MM-DD HH:mm:ss",
+	url: "http://pentredmine1.pentronic.net/redmine/projects/pent-24/time_entries.atom"
     },
 
     // Store the Ergast data in an object.
     ergastData: {DRIVER: null, CONSTRUCTOR: null},
-
+    tasklist: [],
     // A loading boolean.
     loading: true,
 
@@ -60,7 +62,12 @@ Module.register("MMM-Formula1",{
             this.ergastData.CONSTRUCTOR = payload.MRData;
             this.loading = false;
             this.updateDom(this.config.animationSpeed);
+        } else if(notification === "TASK_LIST"){
+            this.tasklist = payload;
+            this.loading = false;
+            this.updateDom(this.config.animationSpeed);
         }
+
     },
 
     // Override dom generator.
@@ -74,12 +81,20 @@ Module.register("MMM-Formula1",{
         }
 
         if ( (this.config.type === 'DRIVER' && this.ergastData.DRIVER.StandingsTable.StandingsLists.length === 0)
-                || (this.config.type != 'DRIVER' && this.ergastData.CONSTRUCTOR.StandingsTable.StandingsLists.length === 0) ) {
+                || (this.config.type === 'CONSTRUCTOR' && this.ergastData.CONSTRUCTOR.StandingsTable.StandingsLists.length === 0) ) {
             var noDataWrapper = document.createElement("div");
             noDataWrapper.innerHTML = this.translate("NO DATA");
             noDataWrapper.className = "small dimmed light";
             return noDataWrapper;
         }
+        if (this.config.type === 'TASK' && this.tasklist.length === 0){
+            var noDataWrapper = document.createElement("div");
+            noDataWrapper.innerHTML = this.translate("No tasks");
+            noDataWrapper.className = "small dimmed light";
+            return noDataWrapper;
+        }
+
+
 
         var tableWrapper = document.createElement("table");
         tableWrapper.className = "small align-left";
@@ -87,22 +102,33 @@ Module.register("MMM-Formula1",{
         tableWrapper.appendChild(this.createHeaderRow());
 
         // Add row to table for each driver in the standings.
-        var standings = this.config.type === 'DRIVER' ? this.ergastData.DRIVER.StandingsTable.StandingsLists[0].DriverStandings : this.ergastData.CONSTRUCTOR.StandingsTable.StandingsLists[0].ConstructorStandings;
+//        var standings = this.config.type === 'DRIVER' ? this.ergastData.DRIVER.StandingsTable.StandingsLists[0].DriverStandings : this.ergastData.CONSTRUCTOR.StandingsTable.StandingsLists[0].ConstructorStandings;
+	var standings=this.tasklist
         var rowsToDisplay = (this.config.maxRows) ? Math.min(this.config.maxRows, standings.length) : standings.length;
         for (i = 0; i < rowsToDisplay; i++) {
             var standing = standings[i];
 
             var driver;
+            var constructor;
+	    var points;
+	    var wins;
+	    var countryCode;
             if(this.config.type === 'DRIVER'){
                 driver = [standing.Driver.givenName, standing.Driver.familyName].join(" ");
             }
-            var countryCode = this.getCodeFromNationality(standing[this.config.type === 'DRIVER' ? 'Driver' : 'Constructor'].nationality);
-            var constructor = this.config.type === 'DRIVER' ? standing.Constructors.map(function(elem){
+            if(this.config.type === 'TASK'){
+                driver = standing.title;
+	        constructor=standing.author;
+		points=standing.updated;
+		countryCode="SE";
+            } else {
+               countryCode = this.getCodeFromNationality(standing[this.config.type === 'DRIVER' ? 'Driver' : 'Constructor'].nationality);
+               constructor = this.config.type === 'DRIVER' ? standing.Constructors.map(function(elem){
                                                                     return elem.name;
                                                                 }).join("/") : standing.Constructor.name;
-            var points = standing.points;
-            var wins = standing.wins;
-
+               points = standing.points;
+               wins = standing.wins;
+	    }
             var dataRow = this.createDataRow(driver,
                                                 countryCode,
                                                 constructor,
@@ -132,7 +158,8 @@ Module.register("MMM-Formula1",{
             var footerTd =  document.createElement("td");
             footerTd.className = "xsmall align-right";
             footerTd.colSpan = tableWrapper.rows[0].cells.length;
-            footerTd.innerHTML = "Season: " + this.ergastData[this.config.type].StandingsTable.StandingsLists[0].season + ", Round: " + this.ergastData[this.config.type].StandingsTable.StandingsLists[0].round;
+//            footerTd.innerHTML = "Season: " + this.ergastData[this.config.type].StandingsTable.StandingsLists[0].season + ", Round: " + this.ergastData[this.config.type].StandingsTable.StandingsLists[0].round;
+	    footerTd.innerHTML = "Pentronic";
             footerTr.appendChild(footerTd);
             tableWrapper.appendChild(footerTd);
         }
@@ -153,6 +180,11 @@ Module.register("MMM-Formula1",{
         tr.appendChild(flagTd);
 
         if(this.config.type === 'DRIVER'){
+            var driverTd =  document.createElement("td");
+            driverTd.innerHTML = this.translate("DRIVER");
+            tr.appendChild(driverTd);
+        }
+        if(this.config.type === 'TASK'){
             var driverTd =  document.createElement("td");
             driverTd.innerHTML = this.translate("DRIVER");
             tr.appendChild(driverTd);
@@ -208,6 +240,12 @@ Module.register("MMM-Formula1",{
         tr.appendChild(flagCell);
 
         if(this.config.type === 'DRIVER'){
+            var driverCell = document.createElement("td");
+            driverCell.className = "title bright";
+            driverCell.innerHTML = driver;
+            tr.appendChild(driverCell);
+        }
+        if(this.config.type === 'TASK'){
             var driverCell = document.createElement("td");
             driverCell.className = "title bright";
             driverCell.innerHTML = driver;

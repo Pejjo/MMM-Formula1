@@ -10,6 +10,11 @@ var ErgastAPI = require("./ErgastAPI.js");
 const NodeHelper = require("node_helper");
 var ical;
 var raceScheduleDB = false;
+const request = require("request")
+const moment = require("moment")
+const querystring = require("querystring")
+const bodyParser = require("body-parser")
+var convert = require('xml-js')
 
 module.exports = NodeHelper.create({
 
@@ -20,6 +25,7 @@ module.exports = NodeHelper.create({
         this.fetcherRunning = false;
         this.driverStandings = false;
         this.constructorStandings = false;
+	this.tasks=false;
     },
 
     // Subclass socketNotificationReceived received.
@@ -46,6 +52,10 @@ module.exports = NodeHelper.create({
             if (this.constructorStandings) {
                 this.sendSocketNotification('CONSTRUCTOR_STANDINGS', this.constructorStandings);
             }
+            if (this.tasks) {
+                this.sendSocketNotification('TASK_LIST', this.tasks);
+            }
+
         }
     },
 
@@ -55,17 +65,92 @@ module.exports = NodeHelper.create({
      */
     fetchStandings: function() {
         console.log(this.name + " is fetching " + (this.config.type === 'DRIVER' ? 'driver' : 'constructor') + " standings");
+
+    var cb = function(result, config, query) {
+      var ret = []
+        //console.log(result)   // Json
+//      for (var property in result.feed.entry[0]) {
+//      console.log(property);
+//      }
+      for (j in result.feed.entry) {
+        console.log(j);
+        var task = result.feed.entry[j]
+        var time = moment(task.updated._text)
+        console.log(time);
+//        if (config.timeFormat == "relative") {
+        task.updated = time.format(config.timeFormat)
+        task.source  = "redmine"
+        task.author  = task.author.name._text
+        console.log(task.author)
+        task.title = task.title._text
+        console.log(task.title)
+        task.content = task.content._text.replace(/<(?:.|\n)*?>/gm, '')
+        console.log(task.content)
+
+        ret.push(task)
+      }
+      return ret
+    }
+
+    var getRequest = function(url, query, cfg) {
+      return new Promise((resolve, reject)=>{
+        request(url, (error, response, body)=> {
+          if (error) {
+            var e = ""
+            reject(e)
+          } else {
+            var result = JSON.parse(convert.xml2json(body, {compact: true, spaces: 2}))
+            if (result.status == "error") {
+              var e = "result.code" + ":" + result.message
+              reject(e)
+            } else {
+              resolve(result)
+            }
+          }
+        })
+      })
+    }
+
+    var getTasks = async (url, query, cfg) => {
+      try {
+        var ret = await getRequest(url, query, cfg)
+        var result = cb (ret, cfg, query)
+//	console.log(result);
+//        if (result.length > 0) {
+          this.tasks = result
+//        }
+//        count--
+//        if (count <= 0) {
+//          count = this.pool.length
+//          this.finishPooling()
+//          return true
+//        }
+        return result
+      } catch (error) {
+        console.log ("[Redmine] Error : ", url, error)
+        return false
+      }
+    }
+
         var self = this;
         this.fetcherRunning = true;
-        var type = this.config.type === 'DRIVER' ? 'driverStandings' : 'constructorStandings';
-        ErgastAPI.getStandings(this.config.season, type, function(standings) {
-            if (standings && standings.updated) {
-                self[type] = standings;
-                self.sendSocketNotification(self.config.type + '_STANDINGS', standings);
-            }
+	this.tasks = []
+	var query = null
+	var url = this.config.url
 
+        var type = this.config.type === 'DRIVER' ? 'driverStandings' : 'constructorStandings';
+	this.tasks=getTasks(url, query, this.config)
+        ErgastAPI.getStandings(this.config.season, type, function(standings) {
+//            if (this.tasks) {
+ 	console.log(JSON.stringify(self.tasks))
+                self[type] = standings;
+//                self.sendSocketNotification(self.config.type + '_STANDINGS', this.tasks);
+		self.sendSocketNotification('TASK_LIST', self.tasks);
+//            }
+		
             setTimeout(function() {
                 self.fetchStandings();
+//		getArticles(url, query, this.config, this.articles)
             }, self.config.reloadInterval);
         });
     },
@@ -117,4 +202,6 @@ module.exports = NodeHelper.create({
             }
             cal.serve(res);
     }
+
+
 });

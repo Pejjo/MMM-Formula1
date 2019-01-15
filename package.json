@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/ianperrin/MMM-Formula1#readme",
   "dependencies": {
-    "ical-generator": "^0.2.7"
+    "ical-generator": "^0.2.7",
+    "xml-js": "^1.6.8"
   }
 }
